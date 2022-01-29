@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	ws "github.com/kiesman99/ba-websocket-server/pkg/websocket"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	// "github.com/kiesman99/ba-websocket-server/pkg/websocket"
 )
 
@@ -43,19 +44,31 @@ func displayHandler(pool *ws.Pool, w http.ResponseWriter, r *http.Request) {
 
 func main() {
 
-	fmt.Println("BA Websocket Server")
+	fmt.Println("Starting BA Websocket Server...")
 
-	telegrafPool := ws.NewPool()
+	telegrafPool := ws.NewPool("telegraf")
 	go telegrafPool.Start()
 	http.HandleFunc("/telegraf", func(rw http.ResponseWriter, r *http.Request) {
 		telegrafHandler(telegrafPool, rw, r)
 	})
 
-	displayPool := ws.NewPool()
+	displayPool := ws.NewPool("display")
 	go displayPool.Start()
 	http.HandleFunc("/display", func(rw http.ResponseWriter, r *http.Request) {
 		displayHandler(displayPool, rw, r)
 	})
 
-	log.Fatal(http.ListenAndServe(":3210", nil))
+	go func() {
+		fmt.Println("Starting Websocket Severs...")
+		log.Fatal(http.ListenAndServe(":3210", nil))
+	}()
+
+	go func() {
+		fmt.Println("Starting Prometheus Severs...")
+		http.Handle("/metrics", promhttp.Handler())
+		log.Fatal(http.ListenAndServe(":2112", nil))
+	}()
+
+	for {
+	}
 }
