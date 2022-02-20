@@ -1,8 +1,8 @@
 package websocket
 
 import (
+	"context"
 	"encoding/json"
-	"fmt"
 	"log"
 
 	"github.com/gorilla/websocket"
@@ -19,7 +19,7 @@ type Message struct {
 	Body string `json:"body"`
 }
 
-func (c *Client) Read() {
+func (c *Client) Read(name string, ctx context.Context) {
 	defer func() {
 		c.Pool.Unregister <- c
 		c.Conn.Close()
@@ -37,12 +37,12 @@ func (c *Client) Read() {
 			log.Println(err)
 			return
 		}
+
 		c.Pool.Broadcast <- json
-		fmt.Printf("Message Received: %+v\n", message)
 	}
 }
 
-func (c *Client) EchoChamber() {
+func (c *Client) EchoChamber(name string, ctx context.Context) {
 	defer func() {
 		c.Pool.Unregister <- c
 		c.Conn.Close()
@@ -55,6 +55,5 @@ func (c *Client) EchoChamber() {
 			return
 		}
 		c.Pool.Broadcast <- message
-		fmt.Printf("Message Received: %s\n", string(message))
 	}
 }

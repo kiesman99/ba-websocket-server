@@ -1,19 +1,16 @@
 package websocket
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/gorilla/websocket"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"go.opentelemetry.io/otel"
 )
 
 var (
-	// connGauge = promauto.NewGauge(prometheus.GaugeOpts{
-	// 	Name: "websocket_connections",
-	// 	Help: "Number of current connections to the websocket instances",
-	// })
-
 	connGauge = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "websocket_connections",
@@ -48,7 +45,7 @@ func NewPool(name string) *Pool {
 	}
 }
 
-func (pool *Pool) Start() {
+func (pool *Pool) Start(name string, ctx context.Context) {
 	for {
 		select {
 		case client := <-pool.Register:
@@ -63,19 +60,20 @@ func (pool *Pool) Start() {
 			delete(pool.Clients, client)
 			connGauge.WithLabelValues(pool.Name).Dec()
 		case message := <-pool.Broadcast:
+			broadCastCtx, broadCastSpan := otel.Tracer(name).Start(ctx, "Broadcast")
 			messageCount.WithLabelValues(pool.Name).Inc()
-			fmt.Println("Sending message to all clients in pool")
 			for client := range pool.Clients {
-				if err := client.Conn.WriteMessage(websocket.TextMessage, message); err != nil {
-					fmt.Println(err)
-					return
-				}
-
-				// if err := client.Conn.WriteJSON(message); err != nil {
-				// 	fmt.Println(err)
-				// 	return
-				// }
+				func() {
+					_, writeSpan := otel.Tracer(name).Start(broadCastCtx, "Write")
+					defer writeSpan.End()
+					if err := client.Conn.WriteMessage(websocket.TextMessage, message); err != nil {
+						fmt.Println(err)
+						writeSpan.End()
+						return
+					}
+				}()
 			}
+			broadCastSpan.End()
 		}
 	}
 }
