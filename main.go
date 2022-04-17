@@ -14,6 +14,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/resource"
 	tracesdk "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.4.0"
+	"go.uber.org/zap"
 	// "github.com/kiesman99/ba-websocket-server/pkg/websocket"
 )
 
@@ -76,7 +77,14 @@ func tracerProvider(url string) (*tracesdk.TracerProvider, error) {
 }
 
 func main() {
-	fmt.Println("Version: 1.0.1")
+
+	logger, _ := zap.NewProduction()
+	defer logger.Sync()
+
+	sugar := logger.Sugar()
+
+	sugar.Info("Version: 1.0.2")
+
 	tp, err := tracerProvider("http://jaeger:14268/api/traces")
 	if err != nil {
 		log.Fatal(err)
@@ -86,27 +94,27 @@ func main() {
 	// instrumentation in the future will default to using it.
 	otel.SetTracerProvider(tp)
 
-	fmt.Println("Starting BA Websocket Server...")
+	sugar.Info("Starting BA Websocket Server...")
 
-	telegrafPool := ws.NewPool("telegraf")
+	telegrafPool := ws.NewPool("telegraf", sugar)
 	go telegrafPool.Start(Name, context.Background())
 	http.HandleFunc("/telegraf", func(rw http.ResponseWriter, r *http.Request) {
 		telegrafHandler(telegrafPool, rw, r)
 	})
 
-	displayPool := ws.NewPool("display")
+	displayPool := ws.NewPool("display", sugar)
 	go displayPool.Start(Name, context.Background())
 	http.HandleFunc("/display", func(rw http.ResponseWriter, r *http.Request) {
 		displayHandler(displayPool, rw, r)
 	})
 
 	go func() {
-		fmt.Println("Starting Websocket Severs...")
+		sugar.Info("Starting Websocket Severs...")
 		log.Fatal(http.ListenAndServe(":3210", nil))
 	}()
 
 	go func() {
-		fmt.Println("Starting Prometheus Severs...")
+		sugar.Info("Starting Prometheus Severs...")
 		http.Handle("/metrics", promhttp.Handler())
 		log.Fatal(http.ListenAndServe(":2112", nil))
 	}()
