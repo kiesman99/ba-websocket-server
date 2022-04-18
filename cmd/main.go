@@ -2,11 +2,12 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"net/http"
 
-	ws "github.com/kiesman99/ba-websocket-server/pkg/websocket"
+	h "github.com/kiesman99/ba-websocket-server/internal/handler"
+	ws "github.com/kiesman99/ba-websocket-server/internal/websocket"
+
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -20,37 +21,7 @@ import (
 
 const Name = "ba_websocket_server"
 
-func telegrafHandler(pool *ws.Pool, w http.ResponseWriter, r *http.Request) {
-	// TODO: Implement real endpoint for telegraf
-	// currently this is only a echo endpoint
-	conn, err := ws.Upgrade(w, r)
-	if err != nil {
-		fmt.Fprintf(w, "%+V\n", err)
-	}
-
-	client := &ws.Client{
-		Conn: conn,
-		Pool: pool,
-	}
-
-	pool.Register <- client
-	client.EchoChamber(Name, context.Background())
-}
-
-func displayHandler(pool *ws.Pool, w http.ResponseWriter, r *http.Request) {
-	conn, err := ws.Upgrade(w, r)
-	if err != nil {
-		fmt.Fprintf(w, "%+V\n", err)
-	}
-
-	client := &ws.Client{
-		Conn: conn,
-		Pool: pool,
-	}
-
-	pool.Register <- client
-	client.Read(Name, context.Background())
-}
+var sugarLogger *zap.SugaredLogger
 
 // tracerProvider returns an OpenTelemetry TracerProvider configured to use
 // the Jaeger exporter that will send spans to the provided url. The returned
@@ -77,44 +48,49 @@ func tracerProvider(url string) (*tracesdk.TracerProvider, error) {
 }
 
 func main() {
-
 	logger, _ := zap.NewProduction()
 	defer logger.Sync()
 
-	sugar := logger.Sugar()
+	sugarLogger = logger.Sugar()
 
-	sugar.Info("Version: 1.0.2")
+	sugarLogger.Info("Version: 1.0.5")
 
 	tp, err := tracerProvider("http://jaeger:14268/api/traces")
 	if err != nil {
-		log.Fatal(err)
+		sugarLogger.Errorf("Error Initializing Tracer", err)
 	}
 
 	// Register our TracerProvider as the global so any imported
 	// instrumentation in the future will default to using it.
 	otel.SetTracerProvider(tp)
 
-	sugar.Info("Starting BA Websocket Server...")
+	sugarLogger.Info("Starting BA Websocket Server...")
 
-	telegrafPool := ws.NewPool("telegraf", sugar)
-	go telegrafPool.Start(Name, context.Background())
+	handler := h.NewHandler(logger)
+
+	telegrafPool := ws.NewPool("telegraf", sugarLogger)
+	go telegrafPool.Start(context.Background())
 	http.HandleFunc("/telegraf", func(rw http.ResponseWriter, r *http.Request) {
-		telegrafHandler(telegrafPool, rw, r)
+		handler.TelegrafHandler(telegrafPool, rw, r)
 	})
 
-	displayPool := ws.NewPool("display", sugar)
-	go displayPool.Start(Name, context.Background())
+	displayPool := ws.NewPool("display", sugarLogger)
+	go displayPool.Start(context.Background())
 	http.HandleFunc("/display", func(rw http.ResponseWriter, r *http.Request) {
-		displayHandler(displayPool, rw, r)
+		handler.DisplayHandler(displayPool, rw, r)
+	})
+
+	http.HandleFunc("/distribution", func(w http.ResponseWriter, r *http.Request) {
+		handler.DistributionHandler(displayPool, telegrafPool, w, r)
 	})
 
 	go func() {
-		sugar.Info("Starting Websocket Severs...")
+		sugarLogger.Info("Starting Websocket Severs...")
 		log.Fatal(http.ListenAndServe(":3210", nil))
 	}()
 
 	go func() {
-		sugar.Info("Starting Prometheus Severs...")
+		sugarLogger.Info("Starting Prometheus Severs...")
 		http.Handle("/metrics", promhttp.Handler())
 		log.Fatal(http.ListenAndServe(":2112", nil))
 	}()

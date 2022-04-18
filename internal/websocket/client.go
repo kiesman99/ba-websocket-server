@@ -19,7 +19,7 @@ type Message struct {
 	Body string `json:"body"`
 }
 
-func (c *Client) Read(name string, ctx context.Context) {
+func (c *Client) Read(ctx context.Context) {
 	defer func() {
 		c.Pool.Unregister <- c
 		c.Conn.Close()
@@ -42,18 +42,18 @@ func (c *Client) Read(name string, ctx context.Context) {
 	}
 }
 
-func (c *Client) EchoChamber(name string, ctx context.Context) {
+func (c *Client) EchoChamber(ctx context.Context) {
 	defer func() {
 		c.Pool.Unregister <- c
 		c.Conn.Close()
 	}()
 
 	for {
-		_, message, err := c.Conn.ReadMessage()
+		_, _, err := c.Conn.ReadMessage()
 		if err != nil {
 			log.Println(err)
 			return
 		}
-		c.Pool.Broadcast <- message
+		// c.Pool.Broadcast <- message
 	}
 }

@@ -5,5 +5,12 @@ This is the most basic websocket server that will handle incoming messages and b
 ## Starting Server
 
 ```bash
-go run main.go
+make start
+```
+
+## Building a Binary
+
+```bash
+make build # for current host
+make build-linux # explicitly build binary for linux systems
 ```
